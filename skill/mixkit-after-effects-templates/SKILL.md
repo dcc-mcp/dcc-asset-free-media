@@ -2,7 +2,7 @@
 name: mixkit-after-effects-templates
 description: Inspect and download explicit free Mixkit After Effects template pages as validated AssetDescriptors.
 license: MIT
-compatibility: "dcc-mcp-core 0.19+, Python 3.8+"
+compatibility: "dcc-mcp-core 0.19+, Python 3.10+"
 metadata:
   dcc-mcp:
     version: v0.1.0
@@ -22,4 +22,3 @@ only `mixkit.co` After Effects item pages and `assets.mixkit.co` ZIP downloads.
 
 The result is a validated `asset_descriptor`; pass it to an After Effects workflow. This skill does
 not redistribute templates, bypass sign-in, or automate premium Envato Elements content.
-
