@@ -12,12 +12,17 @@ LICENSE_URL = "https://mixkit.co/license/#videoTemplateFree"
 LICENSE_TEXT = "Mixkit Free License for Video Templates; review the item license before use."
 HEADERS = {"User-Agent": "dcc-mcp-free-media/0.1"}
 ITEM_PATH = re.compile(r"^/free-after-effects-templates/[a-z0-9-]+-(\d+)/$")
+VIDEO_ITEM_PATH = re.compile(r"^/free-stock-video/[a-z0-9-]+-(\d+)/$")
 
 
 def read_text(url: str) -> str:
     request = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(request, timeout=30) as response:
         return response.read().decode("utf-8")
+
+
+def clean_html(value: str) -> str:
+    return re.sub(r"<[^>]+>", "", html.unescape(value or "")).strip()
 
 
 def audio_license(item_type: str) -> tuple[str, str]:
@@ -101,16 +106,72 @@ def inspect(source_url: str) -> dict[str, Any]:
     parsed_download = urllib.parse.urlparse(download_url)
     if parsed_download.scheme != "https" or parsed_download.netloc.lower() != "assets.mixkit.co" or not parsed_download.path.endswith(".zip"):
         raise RuntimeError("Mixkit returned an unexpected download URL")
-    clean = lambda value: re.sub(r"<[^>]+>", "", html.unescape(value or "")).strip()
     return {
         "id": item_id,
-        "title": clean(title_match.group(1) if title_match else f"Mixkit template {item_id}"),
-        "description": clean(description_match.group(1) if description_match else ""),
+        "title": clean_html(title_match.group(1) if title_match else f"Mixkit template {item_id}"),
+        "description": clean_html(description_match.group(1) if description_match else ""),
         "source_url": source_url,
         "download_url": download_url,
         "license_url": LICENSE_URL,
         "license_text": LICENSE_TEXT,
     }
+
+
+def inspect_video(source_url: str) -> dict[str, Any]:
+    parsed = urllib.parse.urlparse(source_url)
+    match = VIDEO_ITEM_PATH.fullmatch(parsed.path)
+    if parsed.scheme != "https" or parsed.netloc.lower() != "mixkit.co" or not match:
+        raise ValueError("Expected an https://mixkit.co/free-stock-video/<slug>-<id>/ item URL")
+    source_url = urllib.parse.urlunparse(("https", "mixkit.co", parsed.path, "", "", ""))
+    page = read_text(source_url)
+    if 'data-license="videoFree"' not in page or "Mixkit Stock Video Free License" not in page:
+        raise ValueError("The selected video is not offered under the Mixkit Stock Video Free License")
+    title_match = re.search(r'<h1[^>]*data-test-id="item-page-title"[^>]*>(.*?)</h1>', page, re.S)
+    options = []
+    for input_tag in re.findall(r'<input[^>]+data-download--video-options-target="downloadOption"[^>]*>', page, re.S):
+        endpoint = re.search(r'value="([^"]+)"', input_tag)
+        label = re.search(r'data-label="([^"]+)"', input_tag)
+        size = re.search(r'data-size="([^"]+)"', input_tag)
+        if not endpoint:
+            continue
+        endpoint_url = urllib.parse.urljoin(source_url, html.unescape(endpoint.group(1)))
+        endpoint_parsed = urllib.parse.urlparse(endpoint_url)
+        query = urllib.parse.parse_qs(endpoint_parsed.query)
+        resolution = query.get("type", [""])[0]
+        if endpoint_parsed.netloc.lower() != "mixkit.co" or endpoint_parsed.path != f"/free-stock-video/download/{match.group(1)}/" or not resolution:
+            raise RuntimeError("Mixkit returned an unexpected stock video endpoint")
+        options.append({
+            "resolution": resolution,
+            "label": html.unescape(label.group(1)) if label else resolution,
+            "size_mb": float(size.group(1)) if size else None,
+            "endpoint_url": endpoint_url,
+        })
+    if not options:
+        raise RuntimeError("Mixkit stock video download options were not found")
+    return {
+        "id": match.group(1),
+        "title": clean_html(title_match.group(1) if title_match else f"Mixkit stock video {match.group(1)}"),
+        "source_url": source_url,
+        "license_url": "https://mixkit.co/license/#videoFree",
+        "license_text": "Mixkit Stock Video Free License; commercial and personal use allowed under the current license.",
+        "options": options,
+    }
+
+
+def resolve_video(video: dict[str, Any], resolution: str) -> str:
+    option = next((item for item in video["options"] if item["resolution"] == resolution), None)
+    if option is None:
+        available = ", ".join(item["resolution"] for item in video["options"])
+        raise ValueError(f"Resolution {resolution!r} is unavailable; choose one of: {available}")
+    modal = read_text(option["endpoint_url"])
+    match = re.search(r'data-download--modal-url-value="([^"]+)"', modal)
+    if not match:
+        raise RuntimeError("Mixkit stock video download URL was not found")
+    download_url = html.unescape(match.group(1))
+    parsed = urllib.parse.urlparse(download_url)
+    if parsed.scheme != "https" or parsed.netloc.lower() != "assets.mixkit.co" or Path(parsed.path).suffix.lower() != ".mp4":
+        raise RuntimeError("Mixkit returned an unexpected stock video download URL")
+    return download_url
 
 
 def download(url: str, output_dir: str, filename: str) -> str:

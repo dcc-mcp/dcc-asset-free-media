@@ -1,4 +1,52 @@
 tools:
+  - name: inspect_mixkit_stock_video
+    description: Inspect an explicit Mixkit stock video page and reject items that are not under the Stock Video Free License.
+    source_file: scripts/inspect_mixkit_stock_video.py
+    execution: sync
+    affinity: any
+    timeout_hint_secs: 30
+    enforce_thread_affinity: true
+    annotations:
+      read_only_hint: true
+      idempotent_hint: true
+      open_world_hint: true
+    group: mixkit
+    input_schema:
+      type: object
+      required: [source_url]
+      properties:
+        source_url: {type: string}
+    output_schema:
+      type: object
+
+  - name: download_mixkit_stock_video
+    description: Download one selected Free License Mixkit stock video resolution and return a validated AssetDescriptor.
+    source_file: scripts/download_mixkit_stock_video.py
+    execution: sync
+    affinity: any
+    timeout_hint_secs: 180
+    enforce_thread_affinity: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true
+    group: mixkit
+    input_schema:
+      type: object
+      required: [source_url, resolution, output_dir]
+      properties:
+        source_url: {type: string}
+        resolution: {type: string, pattern: "^[0-9]+p$"}
+        output_dir: {type: string}
+    output_schema:
+      type: object
+      required: [asset_descriptor]
+      properties:
+        asset_descriptor:
+          type: object
+          required: [asset_id, variants, attribution]
+
   - name: list_mixkit_audio
     description: List free music or sound effects from an explicit Mixkit category URL with license metadata.
     source_file: scripts/list_mixkit_audio.py

@@ -62,6 +62,24 @@ def mixkit_smoke() -> None:
     assert items[0]["id"] == 738
     assert items[0]["author"] == "Lily J"
 
+    video_page = '''<h1 data-test-id="item-page-title">Programmer working with codes</h1>
+    <a data-license="videoFree">Mixkit Stock Video Free License</a>
+    <input data-download--video-options-target="downloadOption" data-label="Full HD" data-size="33.32" value="/free-stock-video/download/41637/?context=sidebar&amp;type=1080p">'''
+    video_modal = '<div data-download--modal-url-value="https://assets.mixkit.co/videos/41637/41637-1080.mp4"></div>'
+    with patch.object(helper, "read_text", return_value=video_page):
+        video = helper.inspect_video("https://mixkit.co/free-stock-video/programmer-working-with-codes-on-a-computer-41637/")
+    assert video["options"][0]["resolution"] == "1080p"
+    with patch.object(helper, "read_text", return_value=video_modal):
+        assert helper.resolve_video(video, "1080p").endswith("41637-1080.mp4")
+    restricted_page = video_page.replace('data-license="videoFree"', 'data-license="videoRestricted"')
+    with patch.object(helper, "read_text", return_value=restricted_page):
+        try:
+            helper.inspect_video("https://mixkit.co/free-stock-video/programmer-working-with-codes-on-a-computer-41637/")
+        except ValueError as exc:
+            assert "not offered" in str(exc)
+        else:
+            raise AssertionError("Restricted-license stock video must be rejected")
+
 
 def github_plugin_smoke() -> None:
     helper = load("github-release-plugins", "_github_plugins")
