@@ -27,7 +27,7 @@ def descriptor(template: dict[str, Any], local_path: str) -> dict[str, Any]:
 def main(source_url: str, output_dir: str, **_: Any) -> dict[str, Any]:
     try:
         template = inspect(source_url)
-        local_path = download(template["download_url"], output_dir, template["id"])
+        local_path = download(template["download_url"], output_dir, f"mixkit-after-effects-{template['id']}.zip")
         return skill_success(
             "Mixkit After Effects template downloaded",
             files=[local_path],
@@ -43,4 +43,3 @@ if __name__ == "__main__":
     from dcc_mcp_core.skill import run_main
 
     run_main(main)
-

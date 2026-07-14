@@ -1,4 +1,55 @@
 tools:
+  - name: list_mixkit_audio
+    description: List free music or sound effects from an explicit Mixkit category URL with license metadata.
+    source_file: scripts/list_mixkit_audio.py
+    execution: sync
+    affinity: any
+    timeout_hint_secs: 30
+    enforce_thread_affinity: true
+    annotations:
+      read_only_hint: true
+      idempotent_hint: true
+      open_world_hint: true
+    group: mixkit
+    input_schema:
+      type: object
+      required: [category_url]
+      properties:
+        category_url: {type: string}
+        limit: {type: integer, minimum: 1, maximum: 100, default: 20}
+    output_schema:
+      type: object
+
+  - name: download_mixkit_audio
+    description: Download one selected Mixkit music or sound-effect item and return a validated AssetDescriptor.
+    source_file: scripts/download_mixkit_audio.py
+    execution: sync
+    affinity: any
+    timeout_hint_secs: 180
+    enforce_thread_affinity: true
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+      open_world_hint: true
+    group: mixkit
+    input_schema:
+      type: object
+      required: [item_type, item_id, output_dir]
+      properties:
+        item_type: {type: string, enum: [music, sfx]}
+        item_id: {type: integer, minimum: 1}
+        output_dir: {type: string}
+        title: {type: string}
+        author: {type: string}
+    output_schema:
+      type: object
+      required: [asset_descriptor]
+      properties:
+        asset_descriptor:
+          type: object
+          required: [asset_id, variants, attribution]
+
   - name: inspect_mixkit_after_effects_template
     description: Inspect an explicit free Mixkit After Effects template page and return source and license metadata.
     source_file: scripts/inspect_mixkit_after_effects_template.py
@@ -56,4 +107,3 @@ tools:
             attribution:
               type: object
               required: [source_url, license_text]
-

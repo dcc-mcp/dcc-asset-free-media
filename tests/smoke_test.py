@@ -22,7 +22,7 @@ def load(skill: str, name: str):
 def validate_skills() -> None:
     from dcc_mcp_core import validate_skill
 
-    for name in ("pexels-video-assets", "mixkit-after-effects-templates"):
+    for name in ("pexels-video-assets", "mixkit-free-assets", "github-release-plugins"):
         report = validate_skill(str(ROOT / "skill" / name))
         assert not report.has_errors, report
 
@@ -42,7 +42,7 @@ def pexels_smoke() -> None:
 
 
 def mixkit_smoke() -> None:
-    helper = load("mixkit-after-effects-templates", "_mixkit")
+    helper = load("mixkit-free-assets", "_mixkit")
     page = '''<h1 data-test-id="item-page-title">Pixel Frame Intro</h1>
     <p data-test-id="item-page-description">A pixelated intro.</p>
     <button data-download--button-modal-url-value="/free-after-effects-templates/download/615/"></button>'''
@@ -51,18 +51,34 @@ def mixkit_smoke() -> None:
         template = helper.inspect("https://mixkit.co/free-after-effects-templates/pixel-frame-intro-615/")
     assert template["id"] == "615"
     assert template["title"] == "Pixel Frame Intro"
-    downloader = load("mixkit-after-effects-templates", "download_mixkit_after_effects_template")
+    downloader = load("mixkit-free-assets", "download_mixkit_after_effects_template")
     value = downloader.descriptor(template, "/tmp/mixkit-615.zip")
     assert value["asset_id"] == "mixkit:after-effects-615"
     assert value["attribution"]["license_text"]
+
+    audio_page = '''<div class="item-grid__item"><div data-audio-player-item-id-value="738" data-audio-player-item-type-value="music"></div><h2 class="item-grid-card__title">Hip Hop 02</h2><p class="item-grid-music-preview__author">by Lily J</p><div data-test-id="duration">1:55</div><button data-download--button-modal-url-value="/free-stock-music/download/738/"></button></div>'''
+    with patch.object(helper, "read_text", return_value=audio_page):
+        items = helper.list_audio("https://mixkit.co/free-stock-music/", 1)
+    assert items[0]["id"] == 738
+    assert items[0]["author"] == "Lily J"
+
+
+def github_plugin_smoke() -> None:
+    helper = load("github-release-plugins", "_github_plugins")
+    repo = {"description": "plugin", "topics": ["after-effects"], "license": {"spdx_id": "MIT"}}
+    release = {"html_url": "https://github.com/example/plugin/releases/tag/v1", "tag_name": "v1", "published_at": "2026-01-01", "assets": [{"id": 7, "name": "plugin.zip", "size": 12, "download_count": 3, "browser_download_url": "https://github.com/example/plugin/releases/download/v1/plugin.zip"}]}
+    with patch.object(helper, "api", side_effect=[repo, release]):
+        value = helper.inspect("example/plugin")
+    assert value["license_spdx"] == "MIT"
+    assert value["assets"][0]["id"] == 7
 
 
 def main() -> None:
     validate_skills()
     pexels_smoke()
     mixkit_smoke()
+    github_plugin_smoke()
 
 
 if __name__ == "__main__":
     main()
-
