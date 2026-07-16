@@ -16,6 +16,31 @@ Pexels requires `PEXELS_API_KEY`; Google Fonts requires `GOOGLE_FONTS_API_KEY`. 
 GitHub plugin downloads require a public repository with a declared open-source SPDX license.
 This repository does not redistribute third-party media, templates, or plugin binaries.
 
+## Showcases
+
+### Pexels video assets
+
+![Stock video discovery, licensed download, and verified editing handoff](docs/images/pexels-video-assets-showcase.webp)
+
+### Mixkit free assets
+
+![Free video, audio, and template discovery with license-gated downloads](docs/images/mixkit-free-assets-showcase.webp)
+
+### Game icons assets
+
+![Game icon search, attribution capture, and HUD asset handoff](docs/images/game-icons-assets-showcase.webp)
+
+### Google font assets
+
+![Font family selection, license download, and game UI typography result](docs/images/google-font-assets-showcase.webp)
+
+### GitHub release plugins
+
+![Licensed release inspection, checksum verification, and manual plugin review](docs/images/github-release-plugins-showcase.webp)
+
+These are original workflow illustrations; no third-party thumbnails, logos, or interface captures
+are reproduced.
+
 ## Validate
 
 ```bash
