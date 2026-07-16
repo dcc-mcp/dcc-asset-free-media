@@ -22,7 +22,13 @@ def load(skill: str, name: str):
 def validate_skills() -> None:
     from dcc_mcp_core import validate_skill
 
-    for name in ("pexels-video-assets", "mixkit-free-assets", "github-release-plugins"):
+    for name in (
+        "pexels-video-assets",
+        "mixkit-free-assets",
+        "github-release-plugins",
+        "game-icons-assets",
+        "google-font-assets",
+    ):
         report = validate_skill(str(ROOT / "skill" / name))
         assert not report.has_errors, report
 
@@ -91,11 +97,34 @@ def github_plugin_smoke() -> None:
     assert value["assets"][0]["id"] == 7
 
 
+def game_icons_smoke() -> None:
+    helper = load("game-icons-assets", "_game_icons")
+    value = helper.summary("lorc/acid-blob.svg")
+    assert value["author"] == "lorc"
+    assert value["license_spdx"] == "CC-BY-3.0"
+    downloader = load("game-icons-assets", "download_game_icon")
+    descriptor = downloader.descriptor(value, "/tmp/acid-blob.svg")
+    assert descriptor["asset_id"] == "game-icons:lorc/acid-blob"
+
+
+def google_fonts_smoke() -> None:
+    search = load("google-font-assets", "search_google_fonts")
+    fonts = [
+        {"family": "Pixelify Sans", "category": "display", "subsets": ["latin"], "variants": ["regular"]},
+        {"family": "Roboto", "category": "sans-serif", "subsets": ["latin"], "variants": ["regular"]},
+    ]
+    with patch.object(search, "catalog", return_value=fonts):
+        result = search.main(query="pixel", category="display")
+    assert result["context"]["fonts"][0]["family"] == "Pixelify Sans"
+
+
 def main() -> None:
     validate_skills()
     pexels_smoke()
     mixkit_smoke()
     github_plugin_smoke()
+    game_icons_smoke()
+    google_fonts_smoke()
 
 
 if __name__ == "__main__":
