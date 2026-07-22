@@ -161,6 +161,19 @@ def google_fonts_smoke() -> None:
                 pass
             else:
                 raise AssertionError(f"Non-canonical Google Fonts URL must fail closed: {unsafe_url}")
+        with patch.object(
+            helper.urllib.request,
+            "urlopen",
+            return_value=Response(payload, "http://fonts.gstatic.com/font.otf"),
+        ):
+            try:
+                helper.download("https://fonts.gstatic.com/font.otf", output_dir, target.name)
+            except RuntimeError as exc:
+                assert "redirected away from HTTPS" in str(exc)
+            else:
+                raise AssertionError("HTTPS downloads redirected to HTTP must fail closed")
+        assert target.read_bytes() == b"existing"
+        assert not list(Path(output_dir).glob(".font.otf.*"))
         with patch.object(helper.urllib.request, "urlopen", return_value=Response(payload)):
             try:
                 helper.download("https://example.invalid/font.otf", output_dir, target.name, expected_sha256="0" * 64)
