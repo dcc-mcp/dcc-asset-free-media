@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import io
+import os
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -116,6 +120,83 @@ def google_fonts_smoke() -> None:
     with patch.object(search, "catalog", return_value=fonts):
         result = search.main(query="pixel", category="display")
     assert result["context"]["fonts"][0]["family"] == "Pixelify Sans"
+
+    helper = load("google-font-assets", "_google_fonts")
+    curated = helper.curated_font("Noto Sans SC", "regular")
+    assert curated["size_bytes"] == 8_331_336
+    assert curated["sha256"] == "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9"
+    try:
+        helper.curated_font("noto sans sc", "regular")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Keyless curated family matching must be exact")
+
+    class Response(io.BytesIO):
+        def geturl(self) -> str:
+            return "https://example.invalid/font.otf"
+
+    payload = b"verified font"
+    with tempfile.TemporaryDirectory() as output_dir:
+        target = Path(output_dir) / "font.otf"
+        target.write_bytes(b"existing")
+        try:
+            helper.download("http://example.invalid/font.otf", output_dir, target.name)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Non-HTTPS downloads must fail closed")
+        with patch.object(helper.urllib.request, "urlopen", return_value=Response(payload)):
+            try:
+                helper.download("https://example.invalid/font.otf", output_dir, target.name, expected_sha256="0" * 64)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("Hash mismatch must fail closed")
+        assert target.read_bytes() == b"existing"
+        assert not list(Path(output_dir).glob(".font.otf.*"))
+        with patch.object(helper.urllib.request, "urlopen", return_value=Response(payload)):
+            local_path, sha256, size = helper.download(
+                "https://example.invalid/font.otf",
+                output_dir,
+                target.name,
+                expected_sha256=hashlib.sha256(payload).hexdigest(),
+                expected_size=len(payload),
+            )
+        assert Path(local_path).read_bytes() == payload
+        assert sha256 == hashlib.sha256(payload).hexdigest() and size == len(payload)
+
+    downloader = load("google-font-assets", "download_google_font")
+    api_font = {**fonts[0], "files": {"regular": "https://fonts.gstatic.com/pixelify.ttf"}}
+    api_license = {"license_spdx": "OFL-1.1", "license_url": "https://example.invalid/OFL.txt"}
+    with (
+        patch.dict(os.environ, {"GOOGLE_FONTS_API_KEY": "test"}),
+        patch.object(downloader, "catalog", return_value=[api_font]),
+        patch.object(downloader, "family_license", return_value=api_license),
+        patch.object(
+            downloader,
+            "download",
+            side_effect=[("/tmp/Pixelify-Sans-regular.ttf", "a" * 64, 10), ("/tmp/Pixelify-Sans-LICENSE.txt", "b" * 64, 20)],
+        ),
+    ):
+        api_result = downloader.main(family="Pixelify Sans", output_dir="/tmp")
+    assert api_result["context"]["asset_descriptor"]["asset_id"] == "google-fonts:pixelify-sans:regular"
+
+    with (
+        patch.dict(os.environ, {"GOOGLE_FONTS_API_KEY": ""}),
+        patch.object(
+            downloader,
+            "download",
+            side_effect=[
+                ("/tmp/Noto-Sans-SC-regular.otf", curated["sha256"], curated["size_bytes"]),
+                ("/tmp/Noto-Sans-SC-LICENSE.txt", curated["license_sha256"], curated["license_size_bytes"]),
+            ],
+        ),
+    ):
+        curated_result = downloader.main(family="Noto Sans SC", variant="regular", output_dir="/tmp")
+    descriptor = curated_result["context"]["asset_descriptor"]
+    assert descriptor["attribution"]["source_url"] == curated["file_url"]
+    assert descriptor["extra"]["license_url"] == curated["license_url"]
 
 
 def main() -> None:

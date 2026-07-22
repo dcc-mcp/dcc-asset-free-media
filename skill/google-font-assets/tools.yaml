@@ -22,7 +22,7 @@ tools:
       type: object
 
   - name: download_google_font
-    description: Download one Google Fonts family variant and its license, returning a validated AssetDescriptor.
+    description: Download one Google Fonts family variant and its license; without an API key, only exact Noto Sans SC/regular is available from the verified curated manifest.
     source_file: scripts/download_google_font.py
     execution: sync
     affinity: any
@@ -38,9 +38,9 @@ tools:
       type: object
       required: [family, output_dir]
       properties:
-        family: {type: string, minLength: 1}
+        family: {type: string, minLength: 1, description: "Exact family name; keyless mode supports only Noto Sans SC."}
         output_dir: {type: string, minLength: 1}
-        variant: {type: string, default: regular}
+        variant: {type: string, default: regular, description: "Exact variant; keyless mode supports only regular."}
     output_schema:
       type: object
       required: [asset_descriptor]
