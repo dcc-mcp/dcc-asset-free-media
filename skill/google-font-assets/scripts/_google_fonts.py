@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,11 +15,40 @@ from typing import Any
 API_URL = "https://www.googleapis.com/webfonts/v1/webfonts"
 GITHUB_API = "https://api.github.com/repos/google/fonts/contents"
 HEADERS = {"User-Agent": "dcc-mcp-free-media/0.1"}
+GOOGLE_FONTS_FILE_HOST = "fonts.gstatic.com"
+NOTO_CJK_REVISION = "523d033d6cb47f4a80c58a35753646f5c3608a78"
+NOTO_CJK_RAW = f"https://raw.githubusercontent.com/notofonts/noto-cjk/{NOTO_CJK_REVISION}"
+CURATED_FONTS = {
+    ("Noto Sans SC", "regular"): {
+        "family": "Noto Sans SC",
+        "category": "sans-serif",
+        "variants": ["regular"],
+        "subsets": ["chinese-simplified", "latin"],
+        "version": NOTO_CJK_REVISION,
+        "file_url": f"{NOTO_CJK_RAW}/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+        "sha256": "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9",
+        "size_bytes": 8_331_336,
+        "license_spdx": "OFL-1.1",
+        "license_url": f"{NOTO_CJK_RAW}/LICENSE",
+        "license_sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+        "license_size_bytes": 4_301,
+    },
+}
 LICENSES = {
     "ofl": ("OFL-1.1", "OFL.txt"),
     "apache": ("Apache-2.0", "LICENSE.txt"),
     "ufl": ("UFL-1.0", "LICENCE.txt"),
 }
+
+
+def curated_font(family: str, variant: str) -> dict[str, Any]:
+    try:
+        return dict(CURATED_FONTS[(family, variant)])
+    except KeyError as exc:
+        raise ValueError(
+            "Without GOOGLE_FONTS_API_KEY, family and variant must exactly match "
+            "a curated entry: Noto Sans SC / regular"
+        ) from exc
 
 
 def read_json(url: str) -> Any:
@@ -65,10 +96,52 @@ def family_license(family: str) -> dict[str, str]:
     raise ValueError(f"Could not resolve the license file for Google Font family: {family}")
 
 
-def download(url: str, output_dir: str, filename: str) -> str:
+def _https_download_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme == "https":
+        return url
+    if parsed.scheme == "http" and parsed.netloc.casefold() == GOOGLE_FONTS_FILE_HOST:
+        return urllib.parse.urlunsplit(
+            ("https", GOOGLE_FONTS_FILE_HOST, parsed.path, parsed.query, parsed.fragment)
+        )
+    raise ValueError("Google Font downloads require HTTPS")
+
+
+def download(
+    url: str,
+    output_dir: str,
+    filename: str,
+    *,
+    expected_sha256: str | None = None,
+    expected_size: int | None = None,
+) -> tuple[str, str, int]:
+    url = _https_download_url(url)
     target = Path(output_dir).expanduser().resolve() / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(request, timeout=60) as response, target.open("wb") as stream:
-        stream.write(response.read())
-    return str(target)
+    temporary: Path | None = None
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            if urllib.parse.urlparse(response.geturl()).scheme != "https":
+                raise RuntimeError("Google Font download redirected away from HTTPS")
+            digest = hashlib.sha256()
+            size = 0
+            with tempfile.NamedTemporaryFile(
+                "wb", dir=target.parent, prefix=f".{target.name}.", delete=False
+            ) as stream:
+                temporary = Path(stream.name)
+                while chunk := response.read(1024 * 1024):
+                    stream.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
+        sha256 = digest.hexdigest()
+        if expected_size is not None and size != expected_size:
+            raise RuntimeError(f"Downloaded size mismatch: expected {expected_size}, got {size}")
+        if expected_sha256 is not None and sha256 != expected_sha256:
+            raise RuntimeError(f"Downloaded SHA-256 mismatch: expected {expected_sha256}, got {sha256}")
+        os.replace(temporary, target)
+        temporary = None
+        return str(target), sha256, size
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
