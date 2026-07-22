@@ -133,8 +133,12 @@ def google_fonts_smoke() -> None:
         raise AssertionError("Keyless curated family matching must be exact")
 
     class Response(io.BytesIO):
+        def __init__(self, payload: bytes, url: str = "https://example.invalid/font.otf") -> None:
+            super().__init__(payload)
+            self.url = url
+
         def geturl(self) -> str:
-            return "https://example.invalid/font.otf"
+            return self.url
 
     payload = b"verified font"
     with tempfile.TemporaryDirectory() as output_dir:
@@ -146,6 +150,17 @@ def google_fonts_smoke() -> None:
             pass
         else:
             raise AssertionError("Non-HTTPS downloads must fail closed")
+        for unsafe_url in (
+            "http://fonts.gstatic.com.evil.invalid/font.otf",
+            "http://user@fonts.gstatic.com/font.otf",
+            "http://fonts.gstatic.com:80/font.otf",
+        ):
+            try:
+                helper.download(unsafe_url, output_dir, target.name)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"Non-canonical Google Fonts URL must fail closed: {unsafe_url}")
         with patch.object(helper.urllib.request, "urlopen", return_value=Response(payload)):
             try:
                 helper.download("https://example.invalid/font.otf", output_dir, target.name, expected_sha256="0" * 64)
@@ -167,20 +182,34 @@ def google_fonts_smoke() -> None:
         assert sha256 == hashlib.sha256(payload).hexdigest() and size == len(payload)
 
     downloader = load("google-font-assets", "download_google_font")
-    api_font = {**fonts[0], "files": {"regular": "https://fonts.gstatic.com/pixelify.ttf"}}
-    api_license = {"license_spdx": "OFL-1.1", "license_url": "https://example.invalid/OFL.txt"}
-    with (
-        patch.dict(os.environ, {"GOOGLE_FONTS_API_KEY": "test"}),
-        patch.object(downloader, "catalog", return_value=[api_font]),
-        patch.object(downloader, "family_license", return_value=api_license),
-        patch.object(
-            downloader,
-            "download",
-            side_effect=[("/tmp/Pixelify-Sans-regular.ttf", "a" * 64, 10), ("/tmp/Pixelify-Sans-LICENSE.txt", "b" * 64, 20)],
-        ),
-    ):
-        api_result = downloader.main(family="Pixelify Sans", output_dir="/tmp")
-    assert api_result["context"]["asset_descriptor"]["asset_id"] == "google-fonts:pixelify-sans:regular"
+    api_http_url = "http://fonts.gstatic.com/s/pixelifysans/v1/pixelify.ttf"
+    api_https_url = "https://fonts.gstatic.com/s/pixelifysans/v1/pixelify.ttf"
+    api_license_url = "https://example.invalid/OFL.txt"
+    api_font = {**fonts[0], "files": {"regular": api_http_url}}
+    api_license = {"license_spdx": "OFL-1.1", "license_url": api_license_url}
+    api_payload = b"api font payload"
+    license_payload = b"OFL license payload"
+    requested_urls: list[str] = []
+
+    def api_urlopen(request, timeout: int):
+        requested_urls.append(request.full_url)
+        payloads = {api_https_url: api_payload, api_license_url: license_payload}
+        return Response(payloads[request.full_url], request.full_url)
+
+    with tempfile.TemporaryDirectory() as output_dir:
+        with (
+            patch.dict(os.environ, {"GOOGLE_FONTS_API_KEY": "test"}),
+            patch.object(downloader, "catalog", return_value=[api_font]),
+            patch.object(downloader, "family_license", return_value=api_license),
+            patch.object(helper.urllib.request, "urlopen", side_effect=api_urlopen),
+        ):
+            api_result = downloader.main(family="Pixelify Sans", output_dir=output_dir)
+        api_descriptor = api_result["context"]["asset_descriptor"]
+        assert api_result["success"]
+        assert requested_urls == [api_https_url, api_license_url]
+        assert Path(api_descriptor["variants"][0]["local_path"]).read_bytes() == api_payload
+        assert Path(api_descriptor["extra"]["license_path"]).read_bytes() == license_payload
+        assert api_descriptor["asset_id"] == "google-fonts:pixelify-sans:regular"
 
     with (
         patch.dict(os.environ, {"GOOGLE_FONTS_API_KEY": ""}),

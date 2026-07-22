@@ -15,6 +15,7 @@ from typing import Any
 API_URL = "https://www.googleapis.com/webfonts/v1/webfonts"
 GITHUB_API = "https://api.github.com/repos/google/fonts/contents"
 HEADERS = {"User-Agent": "dcc-mcp-free-media/0.1"}
+GOOGLE_FONTS_FILE_HOST = "fonts.gstatic.com"
 NOTO_CJK_REVISION = "523d033d6cb47f4a80c58a35753646f5c3608a78"
 NOTO_CJK_RAW = f"https://raw.githubusercontent.com/notofonts/noto-cjk/{NOTO_CJK_REVISION}"
 CURATED_FONTS = {
@@ -95,6 +96,17 @@ def family_license(family: str) -> dict[str, str]:
     raise ValueError(f"Could not resolve the license file for Google Font family: {family}")
 
 
+def _https_download_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme == "https":
+        return url
+    if parsed.scheme == "http" and parsed.netloc.casefold() == GOOGLE_FONTS_FILE_HOST:
+        return urllib.parse.urlunsplit(
+            ("https", GOOGLE_FONTS_FILE_HOST, parsed.path, parsed.query, parsed.fragment)
+        )
+    raise ValueError("Google Font downloads require HTTPS")
+
+
 def download(
     url: str,
     output_dir: str,
@@ -103,8 +115,7 @@ def download(
     expected_sha256: str | None = None,
     expected_size: int | None = None,
 ) -> tuple[str, str, int]:
-    if urllib.parse.urlparse(url).scheme != "https":
-        raise ValueError("Google Font downloads require HTTPS")
+    url = _https_download_url(url)
     target = Path(output_dir).expanduser().resolve() / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(url, headers=HEADERS)
